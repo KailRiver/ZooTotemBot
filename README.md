@@ -1,1 +1,39 @@
-# ZooTotemBot
+# 🐾 ZooTotemBot - Telegram-бот Московского зоопарка
+
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Telegram](https://img.shields.io/badge/Telegram-Bot-blue.svg)](https://core.telegram.org/bots/api)
+
+Бот помогает определить ваше тотемное животное из коллекции Московского зоопарка и рассказывает о программе опеки над животными.
+
+## ✨ Возможности
+
+- 🎯 Интерактивная викторина с вопросами
+- 🦁 Определение тотемного животного по ответам
+- 📸 Фото и интересные факты о животных
+- ℹ️ Информация о программе опеки
+- 🔄 Возможность пройти викторину повторно
+
+## 🚀 Установка и запуск
+
+1. **Клонируйте репозиторий**:
+   ```bash
+   git clone https://github.com/ваш_логин/ZooTotemBot.git
+   cd ZooTotemBot
+   ```
+
+2. **Установите зависимости**:
+   ```bash
+   pip install python-telegram-bot python-dotenv
+   ```
+
+3. **Настройте бота**:
+   - Создайте файл `.env` в корне проекта
+   - Добавьте ваш Telegram токен:
+     ```
+     TELEGRAM_TOKEN=ваш_токен_бота
+     ```
+
+4. **Запустите бота**:
+   ```bash
+   python bot.py
+   ```
