@@ -7,6 +7,8 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 # Настройка логгирования
@@ -19,6 +21,10 @@ logger = logging.getLogger(__name__)
 # Загружаем токен из .env
 load_dotenv()
 TOKEN = os.getenv('TELEGRAM_TOKEN')
+
+# Контактные данные сотрудника зоопарка
+ZOO_STAFF_CONTACT = "zoo.staff@example.com"
+ZOO_STAFF_PHONE = "+7 (123) 456-78-90"
 
 # Данные для викторины
 ANIMALS = {
@@ -103,7 +109,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start"""
     keyboard = [
         [InlineKeyboardButton("Начать викторину", callback_data='start_quiz')],
-        [InlineKeyboardButton("О программе опеки", callback_data='about_program')]
+        [InlineKeyboardButton("О программе опеки", callback_data='about_program')],
+        [InlineKeyboardButton("Связаться с сотрудником", callback_data='contact_staff')],
+        [InlineKeyboardButton("Оставить отзыв", callback_data='leave_feedback')]
     ]
     await send_message(
         update,
@@ -134,6 +142,7 @@ async def about_program(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         keyboard = [
             [InlineKeyboardButton("Начать викторину", callback_data='start_quiz')],
+            [InlineKeyboardButton("Связаться с сотрудником", callback_data='contact_staff')],
             [InlineKeyboardButton("На главную", callback_data='start')]
         ]
 
@@ -251,6 +260,14 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         result_animal = max(animal_points.items(), key=lambda x: x[1])[0]
         animal_info = ANIMALS.get(result_animal, {})
 
+        # Сохраняем результат в user_data для возможной пересылки сотруднику
+        context.user_data['quiz_result'] = {
+            'animal': result_animal,
+            'points': animal_points,
+            'user_id': update.effective_user.id,
+            'username': update.effective_user.username
+        }
+
         message = (
             f"🎉 <b>Твое тотемное животное - {result_animal}!</b>\n\n"
             f"🐾 {animal_info.get('fact', '')}\n\n"
@@ -260,6 +277,7 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         keyboard = [
             [InlineKeyboardButton("Узнать о программе", callback_data='about_program')],
             [InlineKeyboardButton("Пройти еще раз", callback_data='start_quiz')],
+            [InlineKeyboardButton("Связаться с сотрудником", callback_data='contact_staff')],
             [InlineKeyboardButton("Поделиться",
                                   url=f"https://t.me/share/url?url=Мое тотемное животное - {result_animal}! Узнай свое: https://t.me/{context.bot.username}")]
         ]
@@ -288,6 +306,148 @@ async def show_result(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await send_message(update, context, "Произошла ошибка при показе результата. Пожалуйста, попробуйте снова.")
 
 
+async def contact_staff(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Контактный механизм для связи с сотрудником"""
+    try:
+        query = update.callback_query
+        await query.answer()
+
+        # Получаем результат викторины, если он есть
+        quiz_result = context.user_data.get('quiz_result', {})
+
+        # Формируем информацию о результате
+        result_info = ""
+        if quiz_result:
+            result_info = (
+                f"\n\n<b>Результат викторины:</b>\n"
+                f"Тотемное животное: {quiz_result.get('animal', 'не определено')}\n"
+                f"Баллы: {', '.join([f'{k}: {v}' for k, v in quiz_result.get('points', {}).items()])}\n"
+                f"Пользователь: @{quiz_result.get('username', 'не указан')} (ID: {quiz_result.get('user_id', 'не указан')})"
+            )
+
+        message = (
+            f"📞 <b>Связь с сотрудником зоопарка</b>\n\n"
+            f"Вы можете связаться с нашим сотрудником для получения дополнительной информации:\n"
+            f"📧 Email: {ZOO_STAFF_CONTACT}\n"
+            f"📱 Телефон: {ZOO_STAFF_PHONE}\n"
+            f"{result_info}\n\n"
+            "Напишите ваше сообщение, и мы обязательно вам ответим!"
+        )
+
+        keyboard = [
+            [InlineKeyboardButton("На главную", callback_data='start')],
+            [InlineKeyboardButton("Оставить отзыв", callback_data='leave_feedback')]
+        ]
+
+        await send_message(
+            update,
+            context,
+            message,
+            InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
+        )
+
+        # Устанавливаем состояние ожидания сообщения пользователя для сотрудника
+        context.user_data['awaiting_staff_message'] = True
+
+    except Exception as e:
+        logger.error(f"Ошибка в contact_staff: {e}")
+        await send_message(update, context, "Произошла ошибка. Пожалуйста, попробуйте снова.")
+
+
+async def leave_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Механизм обратной связи"""
+    try:
+        query = update.callback_query
+        if query:
+            await query.answer()
+
+        message = (
+            "📝 <b>Оставьте ваш отзыв</b>\n\n"
+            "Пожалуйста, напишите ваше мнение о работе бота или предложения по улучшению. "
+            "Ваш отзыв поможет нам стать лучше!"
+        )
+
+        keyboard = [
+            [InlineKeyboardButton("Отмена", callback_data='start')]
+        ]
+
+        await send_message(
+            update,
+            context,
+            message,
+            InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
+        )
+
+        # Устанавливаем состояние ожидания отзыва
+        context.user_data['awaiting_feedback'] = True
+
+    except Exception as e:
+        logger.error(f"Ошибка в leave_feedback: {e}")
+        await send_message(update, context, "Произошла ошибка. Пожалуйста, попробуйте снова.")
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка текстовых сообщений (для обратной связи и связи с сотрудником)"""
+    try:
+        if context.user_data.get('awaiting_feedback'):
+            # Обработка отзыва
+            feedback = update.message.text
+            user = update.effective_user
+
+            # Здесь можно сохранить отзыв в базу данных или отправить администратору
+            logger.info(f"Новый отзыв от @{user.username} (ID: {user.id}): {feedback}")
+
+            # Сбрасываем состояние
+            context.user_data.pop('awaiting_feedback', None)
+
+            await send_message(
+                update,
+                context,
+                "✅ Спасибо за ваш отзыв! Мы ценим ваше мнение и обязательно его учтем.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("На главную", callback_data='start')]])
+            )
+
+        elif context.user_data.get('awaiting_staff_message'):
+            # Обработка сообщения для сотрудника
+            user_message = update.message.text
+            user = update.effective_user
+            quiz_result = context.user_data.get('quiz_result', {})
+
+            # Формируем сообщение для сотрудника
+            staff_message = (
+                f"📩 <b>Новое сообщение от пользователя</b>\n\n"
+                f"👤 Пользователь: @{user.username} (ID: {user.id})\n"
+                f"✉️ Сообщение: {user_message}\n\n"
+            )
+
+            if quiz_result:
+                staff_message += (
+                    f"🦁 <b>Результат викторины:</b>\n"
+                    f"Тотемное животное: {quiz_result.get('animal', 'не определено')}\n"
+                    f"Баллы: {', '.join([f'{k}: {v}' for k, v in quiz_result.get('points', {}).items()])}"
+                )
+
+            # Здесь можно отправить сообщение сотруднику
+            logger.info(f"Сообщение для сотрудника:\n{staff_message}")
+
+            # Сбрасываем состояние
+            context.user_data.pop('awaiting_staff_message', None)
+
+            await send_message(
+                update,
+                context,
+                "✅ Ваше сообщение отправлено сотруднику зоопарка. Спасибо! Мы свяжемся с вами в ближайшее время.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("На главную", callback_data='start')]]),
+                parse_mode='HTML'
+            )
+
+    except Exception as e:
+        logger.error(f"Ошибка в handle_message: {e}")
+        await send_message(update, context, "Произошла ошибка при обработке вашего сообщения.")
+
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик ошибок"""
     logger.error(f"Ошибка: {context.error}", exc_info=context.error)
@@ -313,6 +473,11 @@ def main() -> None:
         application.add_handler(CallbackQueryHandler(about_program, pattern='^about_program$'))
         application.add_handler(CallbackQueryHandler(handle_answer, pattern='^answer_'))
         application.add_handler(CallbackQueryHandler(start, pattern='^start$'))
+        application.add_handler(CallbackQueryHandler(contact_staff, pattern='^contact_staff$'))
+        application.add_handler(CallbackQueryHandler(leave_feedback, pattern='^leave_feedback$'))
+
+        # Обработчик текстовых сообщений
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         application.add_error_handler(error_handler)
 
